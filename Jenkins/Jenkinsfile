@@ -1,39 +1,91 @@
 pipeline {
-    agent any
+  agent any
 
-    tools {
-        maven 'Maven3'
-        jdk 'JDK21'
+  environment {
+    REGISTRY = "123456789012.dkr.ecr.us-east-1.amazonaws.com"   // We need to change to our ECR repo
+    IMAGE = "clients-api"
+    KUBE_NAMESPACE = "clients-demo"
+    AWS_REGION = "us-east-1" //based on our requirment
+  }
+
+  options {
+    skipStagesAfterUnstable()
+    timestamps()
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        echo "Checking out source code..."
+        checkout scm
+      }
     }
 
-    stages {
-        stage('Checkout Code') {
-            steps {
-                git branch: 'main', url: 'https://github.com/vikasshinde206/task123-demo.git'
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh 'mvn clean compile'
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                }
-            }
-        }
-
-        stage('Package') {
-            steps {
-                sh 'mvn package'
-            }
-        }
+    stage('Build & Unit Test') {
+      steps {
+        echo "Building and testing Maven project..."
+        sh 'mvn clean test -DskipITs=false'
+      }
     }
+
+    stage('Build Docker Image') {
+      steps {
+        echo "Building Docker image..."
+        sh 'docker build -t $IMAGE:${GIT_COMMIT::7} .'
+      }
+    }
+
+    stage('Trivy Image Scan') {
+      steps {
+        echo "Running Trivy security scan..."
+        sh '''
+          trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE:${GIT_COMMIT::7} > trivy-report.txt
+          echo "Trivy scan completed, report saved as trivy-report.txt"
+        '''
+      }
+    }
+
+    stage('Login & Push to ECR') {
+      steps {
+        echo "Logging into AWS ECR..."
+        withCredentials([usernamePassword(credentialsId: 'ecr-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh '''
+            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REGISTRY
+            docker tag $IMAGE:${GIT_COMMIT::7} $REGISTRY/$IMAGE:${GIT_COMMIT::7}
+            docker push $REGISTRY/$IMAGE:${GIT_COMMIT::7}
+          '''
+        }
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      when {
+        branch 'main'
+      }
+      steps {
+        echo "Deploying to Kubernetes namespace: $KUBE_NAMESPACE ..."
+        withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
+          sh '''
+            export KUBECONFIG=$KUBECONFIG_FILE
+            kubectl set image deployment/clients-api clients-api=$REGISTRY/$IMAGE:${GIT_COMMIT::7} -n $KUBE_NAMESPACE
+            kubectl rollout status deployment/clients-api -n $KUBE_NAMESPACE
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      echo "Cleaning up workspace..."
+      sh 'docker rmi $IMAGE:${GIT_COMMIT::7} || true'
+    }
+    success {
+      echo "✅ Pipeline completed successfully!"
+    }
+    failure {
+      echo "❌ Pipeline failed. Check logs for details."
+    }
+  }
 }
