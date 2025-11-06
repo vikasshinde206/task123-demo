@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-name: mongo-pvc
-namespace: clients-demo
+  name: mongo-pvc
+  namespace: clients-demo
 spec:
-accessModes:
+  accessModes:
 - ReadWriteOnce
 resources:
-requests:
-storage: 5Gi
-# StorageClassName left to cluster default (we can use our cloud provider storage class)
+  requests:
+    storage: 5Gi
+    # StorageClassName left to cluster default (we can use our cloud provider storage class)
