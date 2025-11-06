@@ -1,0 +1,13 @@
+# Certificate resource managed by cert-manager
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: clients-api-cert
+  namespace: clients-demo
+spec:
+  secretName: clients-api-tls
+  dnsNames:
+   - clients.api.deltacapita.com
+  issuerRef:
+     name: letsencrypt-staging
+     kind: ClusterIssuer
