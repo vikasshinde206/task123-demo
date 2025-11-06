@@ -18,34 +18,7 @@ Ideal for showcasing DevOps skills – from code commit to cluster deployment.
 
 ---
 
-## 📁 Project Structure  
-task123-demo/
-├── clients-api/
-│ ├── src/
-│ ├── pom.xml
-│ ├── Dockerfile
-│ └── Jenkinsfile
-└── kubernetes/
-├── mongo/
-│ ├── 00-namespace.yaml
-│ ├── 01-secrets-mongo.yaml
-│ ├── 02-pvc-mongo.yaml
-│ ├── 03-deployment-mongo.yaml
-│ └── 04-service-mongo.yaml
-├── clients-api/
-│ ├── 05-deployment-clients-api.yaml
-│ ├── 06-service-clients-api.yaml
-│ └── 11-ingress-clients-api.yaml
-├── ingress-controller/
-│ ├── 07-ingress-nginx-controller-deployment.yaml
-│ └── 08-ingress-nginx-controller-service.yaml
-└── cert-manager/
-├── 09-clusterissuer-letsencrypt-staging.yaml
-└── 10-certificate-clients-api.yaml
-
----
-
-## 🧠 Local Development Setup  
+##  Local Development Setup  
 ### Prerequisites  
 - Java 17 SDK  
 - Maven  
