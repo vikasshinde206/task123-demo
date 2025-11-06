@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-nginx-controller
+  namespace: clients-demo
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+  template:
+    metadata:
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    spec:
+      containers:
+       - name: controller
+        # We can use our preferred stable ingress-nginx image
+        image: k8s.gcr.io/ingress-nginx/controller:latest
+        args:
+          - /nginx-ingress-controller
+        ports:
+          - containerPort: 80
+          - containerPort: 443
