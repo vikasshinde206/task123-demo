@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: java-app-ingress
+  namespace: clients-demo
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+spec:
+  rules:
+    - host: javaapp.example.com   # Replace with your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: java-app
+                port:
+                  number: 80
+  # Optional TLS
+  # tls:
+  #   - hosts:
+  #       - javaapp.example.com
+  #     secretName: tls-secret
