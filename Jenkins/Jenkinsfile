@@ -40,7 +40,7 @@ pipeline {
       steps {
         echo "Running Trivy security scan..."
         sh '''
-          trivy image --exit-code 0 --severity HIGH,CRITICAL $IMAGE:${GIT_COMMIT::7} > trivy-report.txt
+          trivy image --exit-code 1 --severity HIGH,CRITICAL $IMAGE:${GIT_COMMIT::7} > trivy-report.txt
           echo "Trivy scan completed, report saved as trivy-report.txt"
         '''
       }
