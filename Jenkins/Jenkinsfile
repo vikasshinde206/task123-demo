@@ -1,11 +1,10 @@
+def isReleaseBranch = { env.BRANCH_NAME ==~ /release\/.*/ }
+
 pipeline {
-  agent any
+  agent none
 
   environment {
-    REGISTRY = "123456789012.dkr.ecr.us-east-1.amazonaws.com"   // We need to change to our ECR repo
     IMAGE = "clients-api"
-    KUBE_NAMESPACE = "clients-demo"
-    AWS_REGION = "us-east-1" //based on our requirment
   }
 
   options {
@@ -14,45 +13,89 @@ pipeline {
   }
 
   stages {
-
     stage('Checkout') {
+      when { expression { isReleaseBranch() } }
+      agent any
       steps {
-        echo "Checking out source code..."
+        echo "Checking out code from ${env.BRANCH_NAME}..."
         checkout scm
       }
     }
 
-    stage('Build & Unit Test') {
+    stage('Build') {
+      when { expression { isReleaseBranch() } }
+      agent {
+        docker {
+          image 'maven:3.9.9-eclipse-temurin-17'
+          args '-v $HOME/.m2:/root/.m2'
+        }
+      }
       steps {
-        echo "Building and testing Maven project..."
-        sh 'mvn clean test -DskipITs=false'
+        echo "Building Maven project..."
+        sh 'mvn clean package -DskipTests'
       }
     }
 
-    stage('Build Docker Image') {
+    stage('Unit Test') {
+      when { expression { isReleaseBranch() } }
+      agent {
+        docker {
+          image 'maven:3.9.9-eclipse-temurin-17'
+          args '-v $HOME/.m2:/root/.m2'
+        }
+      }
       steps {
-        echo "Building Docker image..."
-        sh 'docker build -t $IMAGE:${GIT_COMMIT::7} .'
+        echo "Running unit tests..."
+        sh 'mvn test'
+      }
+      post {
+        always {
+          junit '**/target/surefire-reports/*.xml'
+        }
       }
     }
 
-    stage('Trivy Image Scan') {
+    stage('Trivy Security Scan') {
+      when { expression { isReleaseBranch() } }
+      agent {
+        docker {
+          image 'aquasec/trivy:latest'
+        }
+      }
       steps {
         echo "Running Trivy security scan..."
         sh '''
-          trivy image --exit-code 1 --severity HIGH,CRITICAL $IMAGE:${GIT_COMMIT::7} > trivy-report.txt
-          echo "Trivy scan completed, report saved as trivy-report.txt"
+          trivy image --exit-code 1 --severity HIGH,CRITICAL --format table -o trivy-report.txt $IMAGE:${GIT_COMMIT::7} || true
         '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
+        }
       }
     }
 
-    stage('Login & Push to ECR') {
+    stage('Build & Push to ECR') {
+      when { expression { isReleaseBranch() } }
+      agent {
+        docker {
+          image 'amazon/aws-cli:2.15.0'
+          args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+      }
+      environment {
+        REGISTRY = credentials('ecr-registry')
+        AWS_REGION = credentials('aws-region')
+      }
       steps {
-        echo "Logging into AWS ECR..."
+        echo "Building and pushing Docker image to ECR..."
         withCredentials([usernamePassword(credentialsId: 'ecr-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
           sh '''
+            echo "Logging into AWS ECR..."
             aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REGISTRY
-            docker tag $IMAGE:${GIT_COMMIT::7} $REGISTRY/$IMAGE:${GIT_COMMIT::7}
+
+            echo "Building and pushing Docker image..."
+            docker build -t $REGISTRY/$IMAGE:${GIT_COMMIT::7} .
             docker push $REGISTRY/$IMAGE:${GIT_COMMIT::7}
           '''
         }
@@ -60,32 +103,56 @@ pipeline {
     }
 
     stage('Deploy to Kubernetes') {
-      when {
-        branch 'main'
-      }
-      steps {
-        echo "Deploying to Kubernetes namespace: $KUBE_NAMESPACE ..."
-        withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
-          sh '''
-            export KUBECONFIG=$KUBECONFIG_FILE
-            kubectl set image deployment/clients-api clients-api=$REGISTRY/$IMAGE:${GIT_COMMIT::7} -n $KUBE_NAMESPACE
-            kubectl rollout status deployment/clients-api -n $KUBE_NAMESPACE
-          '''
-        }
-      }
-    }
+	  when { expression { isReleaseBranch() } }
+	  agent {
+		docker {
+		  image 'bitnami/kubectl:1.30'
+		}
+	  }
+	  environment {
+		REGISTRY = credentials('ecr-registry')
+		AWS_REGION = credentials('aws-region')
+		KUBE_NAMESPACE = credentials('kube-namespace')
+	  }
+	  steps {
+		script {
+		  echo "Deploying to Kubernetes namespace: $KUBE_NAMESPACE ..."
+		  withCredentials([file(credentialsId: 'kubeconfig-cred', variable: 'KUBECONFIG_FILE')]) {
+			try {
+			  sh '''
+				set -e
+				export KUBECONFIG=$KUBECONFIG_FILE
+
+				echo "Updating deployment image..."
+				kubectl set image deployment/clients-api clients-api=$REGISTRY/$IMAGE:${GIT_COMMIT::7} -n $KUBE_NAMESPACE
+
+				echo "Waiting for rollout to complete..."
+				kubectl rollout status deployment/clients-api -n $KUBE_NAMESPACE --timeout=180s
+
+				echo "Deployment completed successfully!"
+			  '''
+			  currentBuild.result = 'SUCCESS'
+			} catch (err) {
+			  echo "Deployment failed! Rolling back..."
+			  sh '''
+				export KUBECONFIG=$KUBECONFIG_FILE
+				kubectl rollout undo deployment/clients-api -n $KUBE_NAMESPACE || true
+			  '''
+			  error("Deployment to Kubernetes failed. Pipeline aborted.")
+			}
+		  }
+		}
+	  }
+	}
+
   }
 
   post {
-    always {
-      echo "Cleaning up workspace..."
-      sh 'docker rmi $IMAGE:${GIT_COMMIT::7} || true'
-    }
     success {
-      echo "✅ Pipeline completed successfully!"
+      echo "Pipeline completed successfully for ${env.BRANCH_NAME}"
     }
     failure {
-      echo "❌ Pipeline failed. Check logs for details."
+      echo "Pipeline failed for ${env.BRANCH_NAME}"
     }
   }
 }
