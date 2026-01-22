@@ -17,7 +17,7 @@ pipeline {
       when { expression { isReleaseBranch() } }
       agent any
       steps {
-        echo "Checking out code from ${env.BRANCH_NAME}..."
+        echo "Check out code from ${env.BRANCH_NAME}..."
         checkout scm
       }
     }
