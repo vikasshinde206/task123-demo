@@ -1,4 +1,4 @@
-# task123-demo
+# task123-demo#
 # Clients API: Java + MongoDB Microservice  
 Repository: [vikasshinde206/task123-demo](https://github.com/vikasshinde206/task123-demo.git)
 
@@ -7,7 +7,7 @@ Ideal for showcasing DevOps skills – from code commit to cluster deployment.
 
 ---
 
-## 🚀 Tech Stack  
+## 🚀 Tech Stack #
 - **Language / Framework**: Java 17 + Spring Boot 3.x  
 - **Data Store**: MongoDB  
 - **Build Tool**: Maven  
@@ -42,11 +42,9 @@ docker run -d --name mongo -p 27017:27017 \
 
 mvn clean package
 
-
 4. Launch the app:
 
 java -jar target/clients-api-1.0.0.jar
-
 
 5. Verify via browser/curl:
 
@@ -108,7 +106,7 @@ Build Docker image tagged with Git commit hash
 
 Scan image with Trivy for vulnerabilities
 
-Push image to AWS ECR (or other registry)
+Push image to AWS ECR (or other registry like DockerHub)
 
 Deploy to Kubernetes when branch is main
 
